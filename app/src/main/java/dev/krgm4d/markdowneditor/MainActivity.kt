@@ -1,47 +1,156 @@
 package dev.krgm4d.markdowneditor
 
 import android.os.Bundle
+import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.TextField
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.krgm4d.markdowneditor.ui.theme.MarkdownEditorTheme
+import kotlinx.coroutines.launch
+import java.io.FileOutputStream
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
+import org.intellij.markdown.html.HtmlGenerator
+import org.intellij.markdown.parser.MarkdownParser
+
+class MainViewModel : ViewModel() {
+    var markdownText by mutableStateOf("# Hello Markdown")
+        private set
+
+    val parsedHtml: String
+        get() {
+            val flavour = CommonMarkFlavourDescriptor()
+            val parsedTree = MarkdownParser(flavour).buildMarkdownTreeFromString(markdownText)
+            return HtmlGenerator(markdownText, parsedTree, flavour).generateHtml()
+        }
+
+    fun onMarkdownTextChange(newText: String) {
+        markdownText = newText
+    }
+
+    fun saveMarkdownToFile(uri: Uri?, contentResolver: android.content.ContentResolver) {
+        uri?.let {
+            try {
+                contentResolver.openFileDescriptor(it, "w")?.use { parcelFileDescriptor ->
+                    FileOutputStream(parcelFileDescriptor.fileDescriptor).use { fileOutputStream ->
+                        fileOutputStream.write(markdownText.toByteArray())
+                    }
+                }
+            } catch (e: Exception) {
+                // Handle exceptions, e.g., show a toast message
+                e.printStackTrace()
+            }
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
             MarkdownEditorTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                MarkdownEditorApp()
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun MarkdownEditorApp(viewModel: MainViewModel = viewModel()) {
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val context = LocalContext.current
+    val contentResolver = context.contentResolver
+    val scope = rememberCoroutineScope()
+
+    val saveFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/markdown") // Use CreateDocument
+    ) { uri: Uri? ->
+        scope.launch {
+            viewModel.saveMarkdownToFile(uri, contentResolver)
+            // Optionally show a confirmation message (e.g., Toast)
+        }
+    }
+
+    Scaffold( // Wrap with Scaffold to easily add FAB
+        floatingActionButton = {
+            // Show FAB only on the editor screen
+            if (pagerState.currentPage == 0) {
+                FloatingActionButton(onClick = {
+                    // Launch the file saver intent
+                    saveFileLauncher.launch("untitled.md") // Suggest a default filename
+                }) {
+                    Icon(Icons.Filled.Done, contentDescription = "Save Markdown")
                 }
+            }
+        }
+    ) { paddingValues -> // Pass paddingValues to the content
+        HorizontalPager(
+            beyondBoundsPageCount = 2,
+            contentPadding = PaddingValues(16.dp),
+            state = pagerState,
+            modifier = Modifier.fillMaxHeight().padding(paddingValues)
+        ) { page ->
+            when (page) {
+                0 -> EditorScreen(viewModel.markdownText, viewModel::onMarkdownTextChange)
+                1 -> PreviewScreen(viewModel.parsedHtml)
             }
         }
     }
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
+fun EditorScreen(text: String, onTextChange: (String) -> Unit) {
+    TextField(
+        value = text,
+        onValueChange = onTextChange,
+        singleLine = false,
+        modifier = Modifier.fillMaxSize(),
+        keyboardOptions = KeyboardOptions.Default,
+    )
+}
+
+@Composable
+fun PreviewScreen(html: String) {
+    AndroidView(
+        factory = { context ->
+            WebView(context).apply {}
+        },
+        update = { webView ->
+            webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+        },
+        modifier = Modifier.fillMaxSize() // Ensure WebView fills the screen
     )
 }
 
 @Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
+fun DefaultPreview() {
     MarkdownEditorTheme {
-        Greeting("Android")
+        MarkdownEditorApp()
     }
 }
