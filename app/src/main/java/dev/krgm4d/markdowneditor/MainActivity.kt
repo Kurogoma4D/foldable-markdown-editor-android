@@ -1,7 +1,6 @@
 package dev.krgm4d.markdowneditor
 
 import android.os.Bundle
-import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,7 +15,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.krgm4d.markdowneditor.ui.theme.MarkdownEditorTheme
@@ -26,12 +24,20 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material3.Text
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.unit.dp
 import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
@@ -110,10 +116,12 @@ fun MarkdownEditorApp(viewModel: MainViewModel = viewModel()) {
         }
     ) { paddingValues -> // Pass paddingValues to the content
         HorizontalPager(
-            beyondBoundsPageCount = 2,
+            beyondViewportPageCount = 2,
             contentPadding = PaddingValues(16.dp),
             state = pagerState,
-            modifier = Modifier.fillMaxHeight().padding(paddingValues)
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(paddingValues)
         ) { page ->
             when (page) {
                 0 -> EditorScreen(viewModel.markdownText, viewModel::onMarkdownTextChange)
@@ -136,15 +144,15 @@ fun EditorScreen(text: String, onTextChange: (String) -> Unit) {
 
 @Composable
 fun PreviewScreen(html: String) {
-    AndroidView(
-        factory = { context ->
-            WebView(context).apply {}
-        },
-        update = { webView ->
-            webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
-        },
-        modifier = Modifier.fillMaxSize() // Ensure WebView fills the screen
-    )
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxSize().verticalScroll(rememberScrollState()),
+    ) {
+        Spacer(Modifier.size(16.dp))
+        Text(
+            AnnotatedString.fromHtml(html.trimIndent()),
+        )
+        Spacer(Modifier.size(16.dp))
+    }
 }
 
 @Preview(showBackground = true)
