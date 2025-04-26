@@ -9,7 +9,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -25,7 +24,6 @@ import dev.krgm4d.markdowneditor.ui.theme.MarkdownEditorTheme
 import kotlinx.coroutines.launch
 import java.io.FileOutputStream
 import android.net.Uri
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -42,6 +40,7 @@ import androidx.compose.material.icons.filled.Done
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.unit.dp
@@ -52,6 +51,9 @@ import org.intellij.markdown.parser.MarkdownParser
 
 class MainViewModel : ViewModel() {
     var markdownText by mutableStateOf("# Hello Markdown")
+        private set
+
+    var isEditorFirst by mutableStateOf(true)
         private set
 
     val parsedHtml: String
@@ -65,6 +67,10 @@ class MainViewModel : ViewModel() {
         markdownText = newText
     }
 
+    fun toggleColumnOrder() {
+        isEditorFirst = !isEditorFirst
+    }
+    
     fun saveMarkdownToFile(uri: Uri?, contentResolver: android.content.ContentResolver) {
         uri?.let {
             try {
@@ -117,12 +123,19 @@ fun MarkdownEditorApp(viewModel: MainViewModel = viewModel()) {
             TopAppBar(
                 title = { Text("Markdown Editor") },
                 actions = {
-                        IconButton(onClick = {
-                            // Launch the file saver intent
-                            saveFileLauncher.launch("untitled.md") // Suggest a default filename
-                        }) {
-                            Icon(Icons.Filled.Done, contentDescription = "Save Markdown")
+                    if (isOpened) {
+                        IconButton(onClick = { viewModel.toggleColumnOrder() }) {
+                            Icon(
+                                painter = painterResource(R.drawable.swap_horiz),
+                                contentDescription = "Swap columns"
+                            )
                         }
+                    }
+                    IconButton(onClick = {
+                        saveFileLauncher.launch("untitled.md")
+                    }) {
+                        Icon(Icons.Default.Done, contentDescription = "Save Markdown")
+                    }
                 }
             )
         },
@@ -131,13 +144,22 @@ fun MarkdownEditorApp(viewModel: MainViewModel = viewModel()) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues) // Apply padding from Scaffold
+                    .padding(paddingValues)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    EditorScreen(viewModel.markdownText, viewModel::onMarkdownTextChange)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    PreviewScreen(viewModel.parsedHtml)
+                if (viewModel.isEditorFirst) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        EditorScreen(viewModel.markdownText, viewModel::onMarkdownTextChange)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        PreviewScreen(viewModel.parsedHtml)
+                    }
+                } else {
+                    Column(modifier = Modifier.weight(1f)) {
+                        PreviewScreen(viewModel.parsedHtml)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        EditorScreen(viewModel.markdownText, viewModel::onMarkdownTextChange)
+                    }
                 }
             }
         } else {
