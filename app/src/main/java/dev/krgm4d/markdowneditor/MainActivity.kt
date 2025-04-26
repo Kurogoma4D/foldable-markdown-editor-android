@@ -8,10 +8,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -21,11 +25,13 @@ import dev.krgm4d.markdowneditor.ui.theme.MarkdownEditorTheme
 import kotlinx.coroutines.launch
 import java.io.FileOutputStream
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.size
@@ -33,12 +39,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
-import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.unit.dp
+import androidx.window.core.layout.WindowSizeClass
 import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
@@ -85,7 +92,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MarkdownEditorApp(viewModel: MainViewModel = viewModel()) {
     val pagerState = rememberPagerState(pageCount = { 2 })
@@ -102,30 +109,50 @@ fun MarkdownEditorApp(viewModel: MainViewModel = viewModel()) {
         }
     }
 
-    Scaffold( // Wrap with Scaffold to easily add FAB
-        floatingActionButton = {
-            // Show FAB only on the editor screen
-            if (pagerState.currentPage == 0) {
-                FloatingActionButton(onClick = {
-                    // Launch the file saver intent
-                    saveFileLauncher.launch("untitled.md") // Suggest a default filename
-                }) {
-                    Icon(Icons.Filled.Done, contentDescription = "Save Markdown")
+    val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
+    val isOpened = windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Markdown Editor") },
+                actions = {
+                        IconButton(onClick = {
+                            // Launch the file saver intent
+                            saveFileLauncher.launch("untitled.md") // Suggest a default filename
+                        }) {
+                            Icon(Icons.Filled.Done, contentDescription = "Save Markdown")
+                        }
+                }
+            )
+        },
+    ) { paddingValues ->
+        if (isOpened) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues) // Apply padding from Scaffold
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    EditorScreen(viewModel.markdownText, viewModel::onMarkdownTextChange)
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    PreviewScreen(viewModel.parsedHtml)
                 }
             }
-        }
-    ) { paddingValues -> // Pass paddingValues to the content
-        HorizontalPager(
-            beyondViewportPageCount = 2,
-            contentPadding = PaddingValues(16.dp),
-            state = pagerState,
-            modifier = Modifier
-                .fillMaxHeight()
-                .padding(paddingValues)
-        ) { page ->
-            when (page) {
-                0 -> EditorScreen(viewModel.markdownText, viewModel::onMarkdownTextChange)
-                1 -> PreviewScreen(viewModel.parsedHtml)
+        } else {
+            HorizontalPager(
+                beyondViewportPageCount = 2,
+                contentPadding = PaddingValues(16.dp),
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(paddingValues) // Apply padding from Scaffold
+            ) { page ->
+                when (page) {
+                    0 -> EditorScreen(viewModel.markdownText, viewModel::onMarkdownTextChange)
+                    1 -> PreviewScreen(viewModel.parsedHtml)
+                }
             }
         }
     }
@@ -145,7 +172,10 @@ fun EditorScreen(text: String, onTextChange: (String) -> Unit) {
 @Composable
 fun PreviewScreen(html: String) {
     Column(
-        modifier = Modifier.padding(horizontal = 16.dp).fillMaxSize().verticalScroll(rememberScrollState()),
+        modifier = Modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
     ) {
         Spacer(Modifier.size(16.dp))
         Text(
