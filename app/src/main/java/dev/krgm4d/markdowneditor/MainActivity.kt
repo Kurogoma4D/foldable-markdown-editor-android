@@ -24,6 +24,7 @@ import dev.krgm4d.markdowneditor.ui.theme.MarkdownEditorTheme
 import kotlinx.coroutines.launch
 import java.io.FileOutputStream
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -44,10 +45,25 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.window.area.WindowAreaCapability
+import androidx.window.area.WindowAreaController
+import androidx.window.area.WindowAreaInfo
+import androidx.window.area.WindowAreaSession
+import androidx.window.area.WindowAreaSessionCallback
+import androidx.window.core.ExperimentalWindowApi
 import androidx.window.core.layout.WindowSizeClass
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
+import java.util.concurrent.Executor
 
 class MainViewModel : ViewModel() {
     var markdownText by mutableStateOf("# Hello Markdown")
@@ -70,7 +86,7 @@ class MainViewModel : ViewModel() {
     fun toggleColumnOrder() {
         isEditorFirst = !isEditorFirst
     }
-    
+
     fun saveMarkdownToFile(uri: Uri?, contentResolver: android.content.ContentResolver) {
         uri?.let {
             try {
@@ -87,20 +103,75 @@ class MainViewModel : ViewModel() {
     }
 }
 
-class MainActivity : ComponentActivity() {
+@OptIn(ExperimentalWindowApi::class)
+class MainActivity : ComponentActivity(), WindowAreaSessionCallback {
+    private lateinit var windowAreaController: WindowAreaController
+    private lateinit var displayExecutor: Executor
+    private var windowAreaInfo: WindowAreaInfo? = null
+    private var capabilityStatus: WindowAreaCapability.Status =
+        WindowAreaCapability.Status.WINDOW_AREA_STATUS_UNSUPPORTED
+    private val rearDisplayOperation = WindowAreaCapability.Operation.OPERATION_TRANSFER_ACTIVITY_TO_AREA
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        displayExecutor = ContextCompat.getMainExecutor(this)
+        windowAreaController = WindowAreaController.getOrCreate()
+
+        lifecycleScope.launch(Dispatchers.Main) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                windowAreaController.windowAreaInfos
+                    .map { info -> info.firstOrNull { it.type == WindowAreaInfo.Type.TYPE_REAR_FACING } }
+                    .onEach { info -> windowAreaInfo = info }
+                    .map { it?.getCapability(rearDisplayOperation)?.status ?: WindowAreaCapability.Status.WINDOW_AREA_STATUS_UNSUPPORTED }
+                    .distinctUntilChanged()
+                    .collect {
+                        capabilityStatus = it
+                    }
+            }
+        }
+
         setContent {
             MarkdownEditorTheme {
-                MarkdownEditorApp()
+                MarkdownEditorApp(
+                    onTapSwitchDisplay = {
+                        when(capabilityStatus) {
+                            WindowAreaCapability.Status.WINDOW_AREA_STATUS_AVAILABLE -> {
+                                windowAreaInfo?.token?.let { token ->
+                                    windowAreaController.transferActivityToWindowArea(
+                                        token = token,
+                                        activity = this,
+                                        executor = displayExecutor,
+                                        windowAreaSessionCallback = this
+                                    )
+                                }
+                            }
+                            WindowAreaCapability.Status.WINDOW_AREA_STATUS_ACTIVE -> {
+                                val windowAreaSession = windowAreaInfo?.getActiveSession(rearDisplayOperation)
+                                windowAreaSession?.close()
+                            }
+                            else -> {
+
+                            }
+                        }
+                    }
+                )
             }
         }
     }
+
+    override fun onSessionEnded(t: Throwable?) {
+        Log.d("MAIN", "onSessionEnded")
+    }
+
+    override fun onSessionStarted(session: WindowAreaSession) {
+        Log.d("MAIN", "onSessionStarted")
+    }
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MarkdownEditorApp(viewModel: MainViewModel = viewModel()) {
+fun MarkdownEditorApp(viewModel: MainViewModel = viewModel(), onTapSwitchDisplay: () -> Unit) {
     val pagerState = rememberPagerState(pageCount = { 2 })
     val context = LocalContext.current
     val contentResolver = context.contentResolver
@@ -124,6 +195,12 @@ fun MarkdownEditorApp(viewModel: MainViewModel = viewModel()) {
                 title = { Text("Markdown Editor") },
                 actions = {
                     if (isOpened) {
+                        IconButton(onClick = onTapSwitchDisplay) {
+                            Icon(
+                                painter = painterResource(R.drawable.rear_camera),
+                                contentDescription = "Switch to rear display"
+                            )
+                        }
                         IconButton(onClick = { viewModel.toggleColumnOrder() }) {
                             Icon(
                                 painter = painterResource(R.drawable.swap_horiz),
@@ -211,6 +288,6 @@ fun PreviewScreen(html: String) {
 @Composable
 fun DefaultPreview() {
     MarkdownEditorTheme {
-        MarkdownEditorApp()
+        MarkdownEditorApp(onTapSwitchDisplay = {})
     }
 }

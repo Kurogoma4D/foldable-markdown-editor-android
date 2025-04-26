@@ -52,6 +52,7 @@ dependencies {
     implementation(libs.markdown) // Add JetBrains Markdown library
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.adaptive)
+    implementation(libs.androidx.window)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
