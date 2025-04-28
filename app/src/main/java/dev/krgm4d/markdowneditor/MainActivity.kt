@@ -1,5 +1,6 @@
 package dev.krgm4d.markdowneditor
 
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,7 +26,6 @@ import kotlinx.coroutines.launch
 import java.io.FileOutputStream
 import android.net.Uri
 import android.util.Log
-import android.view.OrientationEventListener
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -112,41 +112,25 @@ class MainActivity : ComponentActivity(), WindowAreaSessionCallback {
     private var capabilityStatus: WindowAreaCapability.Status =
         WindowAreaCapability.Status.WINDOW_AREA_STATUS_UNSUPPORTED
     private val rearDisplayOperation = WindowAreaCapability.Operation.OPERATION_TRANSFER_ACTIVITY_TO_AREA
-    private var isRearDisplay = false
     private var isSidewaysRotated = false
-    private lateinit var orientationEventListener: OrientationEventListener
 
-    private fun setupOrientationListener() {
-        orientationEventListener = object : OrientationEventListener(this) {
-            override fun onOrientationChanged(orientation: Int) {
-                if (orientation == ORIENTATION_UNKNOWN) return
-                val isSideways = (orientation in 45..135) || (orientation in 225..315)
-                if (isSidewaysRotated != isSideways) {
-                    isSidewaysRotated = isSideways
-                    if (isRearDisplay) {
-                        window.decorView.rotation = if (isSideways) 180f else 0f
-                    }
-                }
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
+        
+        if (isSidewaysRotated != isLandscape) {
+            isSidewaysRotated = isLandscape
+            if (MarkdownEditorApplication.isRearDisplay) {
+                window.decorView.rotation = if (isLandscape) 180f else 0f
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (orientationEventListener.canDetectOrientation()) {
-            orientationEventListener.enable()
-        }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        orientationEventListener.disable()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setupOrientationListener()
+        isSidewaysRotated = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
         displayExecutor = ContextCompat.getMainExecutor(this)
         windowAreaController = WindowAreaController.getOrCreate()
 
@@ -194,13 +178,13 @@ class MainActivity : ComponentActivity(), WindowAreaSessionCallback {
 
     override fun onSessionEnded(t: Throwable?) {
         Log.d("MAIN", "onSessionEnded")
-        isRearDisplay = false
+        MarkdownEditorApplication.isRearDisplay = false
         window.decorView.rotation = 0f
     }
 
     override fun onSessionStarted(session: WindowAreaSession) {
         Log.d("MAIN", "onSessionStarted")
-        isRearDisplay = true
+        MarkdownEditorApplication.isRearDisplay = true
         window.decorView.rotation = if (isSidewaysRotated) 180f else 0f
     }
 }
